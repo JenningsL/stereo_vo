@@ -25,9 +25,9 @@ public:
   Mat right_img;
   Mat disp;
   SE3 T_c_w_;
+  std::shared_ptr<Camera> cam_;
 private:
   long unsigned int id_;
-  std::shared_ptr<Camera> cam_;
 };
 
 } // namespace stereo_vo

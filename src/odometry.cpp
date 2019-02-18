@@ -3,6 +3,7 @@
 //
 
 #include "odometry.h"
+#include "g2o_types.h"
 #include <opencv2/highgui/highgui.hpp>
 
 namespace stereo_vo {
@@ -22,7 +23,7 @@ std::shared_ptr<Frame> Odometry::readImage(string l_img, string r_img) {
   } else if(state_ == OK) {
     // tracking_pts_ may decrease
     trackFeature(frame);
-    SE3 T = estimatePose();
+    SE3 T = estimatePose(frame);
     frame->setPose(T);
     if(tracking_pts_.size() < MIN_CNT)
       extractFeature(frame);
@@ -100,7 +101,7 @@ void Odometry::extractFeature(std::shared_ptr<Frame> frame) {
   }
 }
 
-SE3 Odometry::estimatePose() {
+SE3 Odometry::estimatePose(std::shared_ptr<Frame> frame) {
   // construct the 3d 2d observations
   vector<cv::Point3f> pts3d;
   vector<cv::Point2f> pts2d;
@@ -110,6 +111,7 @@ SE3 Odometry::estimatePose() {
   for (auto mpid:map_point_ids_) {
     pts3d.push_back(local_map_->getPointById(mpid));
   }
+  cout << "3d<->2d pairs: " << pts2d.size() << endl;
   Mat K = ( cv::Mat_<double> ( 3,3 ) <<
     cam_->fx_, 0, cam_->cx_,
     0, cam_->fy_, cam_->cy_,
@@ -119,12 +121,52 @@ SE3 Odometry::estimatePose() {
   bool success = cv::solvePnPRansac(pts3d, pts2d, K, Mat(), rvec, tvec, false, 100, 4.0, 0.99, inliers);
   int num_inliers_ = inliers.rows;
   cout<<"pnp inliers: "<<num_inliers_<<endl;
-  cout << "rotation: " << rvec << endl;
-  cout << "translation: " << tvec << endl;
   SE3 T_c_w_estimated_ = SE3 (
           SO3 (rvec.at<double>(0,0), rvec.at<double>(1,0), rvec.at<double>(2,0)),
           Vector3d (tvec.at<double>(0,0), tvec.at<double>(1,0), tvec.at<double>(2,0))
   );
+
+  // using bundle adjustment to optimize the pose
+  typedef g2o::BlockSolver<g2o::BlockSolverTraits<6,2>> Block;
+  Block::LinearSolverType* linearSolver = new g2o::LinearSolverDense<Block::PoseMatrixType>();
+  Block* solver_ptr = new Block ( linearSolver );
+  g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg ( solver_ptr );
+  g2o::SparseOptimizer optimizer;
+  optimizer.setAlgorithm ( solver );
+
+  g2o::VertexSE3Expmap* pose = new g2o::VertexSE3Expmap();
+  pose->setId ( 0 );
+  pose->setEstimate ( g2o::SE3Quat (
+          T_c_w_estimated_.rotation_matrix(), T_c_w_estimated_.translation()
+  ));
+  optimizer.addVertex ( pose );
+
+  // edges
+  for ( int i=0; i<inliers.rows; i++ )
+  {
+    int index = inliers.at<int> ( i,0 );
+    // 3D -> 2D projection
+    EdgeProjectXYZ2UVPoseOnly* edge = new EdgeProjectXYZ2UVPoseOnly();
+    edge->setId ( i );
+    edge->setVertex ( 0, pose );
+    edge->camera_ = cam_.get();
+    edge->point_ = Vector3d ( pts3d[index].x, pts3d[index].y, pts3d[index].z );
+    edge->setMeasurement ( Vector2d ( pts2d[index].x, pts2d[index].y ) );
+    edge->setInformation ( Eigen::Matrix2d::Identity() );
+    optimizer.addEdge ( edge );
+    // set the inlier map points
+//    match_3dpts_[index]->matched_times_++;
+  }
+
+  optimizer.initializeOptimization();
+  optimizer.optimize ( 10 );
+
+  T_c_w_estimated_ = SE3 (
+          pose->estimate().rotation(),
+          pose->estimate().translation()
+  );
+
+  cout<<"T_c_w_estimated_: "<<endl<<T_c_w_estimated_.matrix()<<endl;
   return T_c_w_estimated_;
 }
 

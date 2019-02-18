@@ -29,7 +29,7 @@ private:
   int MIN_DIST = 20;
   void extractFeature(std::shared_ptr<Frame> frame);
   void trackFeature(std::shared_ptr<Frame> frame);
-  SE3 estimatePose();
+  SE3 estimatePose(std::shared_ptr<Frame> frame);
   VOState state_;
   std::shared_ptr<Frame> last_frame_;
   std::shared_ptr<Camera> cam_;

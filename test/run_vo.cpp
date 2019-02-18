@@ -26,7 +26,7 @@ int main ( int argc, char** argv )
   vis.showWidget ( "World", world_coor );
   vis.showWidget ( "Camera", camera_coor );
 
-  for(int i = 0; i < 200; i++) {
+  for(int i = 0; i < 700; i++) {
     char buffer [10];
     sprintf(buffer, "%06d.png", i);
     string fname(buffer);

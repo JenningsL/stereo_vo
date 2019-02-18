@@ -3,6 +3,7 @@ add_library( stereo_vo SHARED
     odometry.cpp
     camera.cpp
     local_map.cpp
+    g2o_types.cpp
 )
 
 target_link_libraries( stereo_vo
