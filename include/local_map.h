@@ -10,10 +10,17 @@ namespace stereo_vo {
 
 class LocalMap {
 public:
-  uint32_t addPoint(cv::Point3f p);
-  cv::Point3f getPointById(uint32_t id);
+  uint32_t addPoint(Vector3d p, uint32_t frame_id);
+  void updatePoint(uint32_t id, Vector3d p);
+  Vector3d getPointById(uint32_t id);
+  void getAllPoints(vector<uint32_t>& ids, vector<Vector3d>& points);
+  void removeFrame(uint32_t fid);
+  void removePoints(const vector<uint32_t>& ids);
+  int countPoints();
+  void clear();
 private:
-  std::unordered_map<uint32_t, cv::Point3f> points_;
+  std::unordered_map<uint32_t, Vector3d> points_;
+  std::unordered_map<uint32_t, vector<uint32_t>> frame_pts_;
 };
 
 }

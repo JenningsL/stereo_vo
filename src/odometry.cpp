@@ -5,169 +5,169 @@
 #include "odometry.h"
 #include "g2o_types.h"
 #include <opencv2/highgui/highgui.hpp>
+#include <cmath>
+#include <iterator>
+#include <algorithm>
+#include <random>
 
 namespace stereo_vo {
 
 Odometry::Odometry() : state_(INIT) {
   local_map_ = std::unique_ptr<LocalMap>(new LocalMap());
   cam_ = std::shared_ptr<Camera>(new Camera(707.0912, 707.0912, 601.8873, 183.1104));
+//  cam_ = std::shared_ptr<Camera>(new Camera(518.0, 519.0, 325.5, 253.5));
 }
 
-std::shared_ptr<Frame> Odometry::readImage(string l_img, string r_img) {
+std::shared_ptr<Frame> Odometry::addFrame(string l_img, string r_img) {
   Mat left_img = cv::imread(l_img);
   Mat right_img = cv::imread(r_img);
-  std::shared_ptr<Frame> frame = Frame::CreateFrame(left_img, right_img, cam_);
+  cv::Mat l_gray, r_gray;
+  cvtColor(left_img, l_gray, CV_BGR2GRAY);
+  cvtColor(right_img, r_gray, CV_BGR2GRAY);
+  std::shared_ptr<Frame> frame = Frame::CreateFrame(l_gray, r_gray, cam_);
   if(state_ == INIT) {
+    frame->setReference(true);
+    ref_frame_ = frame;
     extractFeature(frame);
+    active_frames_.push_back(frame);
     state_ = OK;
   } else if(state_ == OK) {
-    // tracking_pts_ may decrease
-    trackFeature(frame);
-    SE3 T = estimatePose(frame);
-    frame->setPose(T);
-    if(tracking_pts_.size() < MIN_CNT)
+    // tracking
+    trackNewFrame(frame);
+    // local BA
+    active_frames_.push_back(frame);
+    if(active_frames_.size() > 3) {
+      active_frames_.erase(active_frames_.begin());
+    }
+    optimizeWindow();
+
+    if(frame->getId() - ref_frame_->getId() > 5) {
+      // change ref frame
       extractFeature(frame);
+      ref_frame_ = frame;
+    }
   }
   last_frame_ = frame;
   return frame;
 };
 
-list<cv::Point2f> Odometry::getTrackingPts() {
-  return tracking_pts_;
+void Odometry::trackNewFrame(std::shared_ptr<Frame> frame) {
+  VecVec2d px_ref;
+  vector<double> depth_ref;
+  Sophus::SE3 T21;
+
+  int nPoints = 2000;
+  int border = 50;
+  VecVec2d candidates;
+  last_frame_->extractFeaturePoints(candidates, nPoints, border);
+  // generate pixels and depth in reference frame
+  for (int i = 0; i < candidates.size(); i++) {
+    float depth = last_frame_->getDepth(candidates[i]);
+    if(depth <= 0 || std::isnan(depth) || std::isinf(depth)) {
+      continue;
+    }
+    px_ref.push_back(candidates[i]);
+    depth_ref.push_back(depth);
+  }
+  DirectPoseEstimationMultiLayer(last_frame_->left_img, frame->left_img, px_ref, depth_ref, cam_, T21);
+  frame->setPose(T21*last_frame_->T_c_w_);
 }
 
-void Odometry::trackFeature(std::shared_ptr<Frame> frame) {
-  vector<cv::Point2f> prev_pts;
-  vector<cv::Point2f> cur_pts;
-  for(auto pt:tracking_pts_) {
-    prev_pts.push_back(pt);
-  }
-  vector<unsigned char> status;
-  vector<float> error;
-  cv::calcOpticalFlowPyrLK(last_frame_->left_img, frame->left_img, prev_pts, cur_pts, status, error);
-  vector<uint32_t> tracked_ids;
-  int i = 0;
-  vector<cv::Point2f> match_prev_pts;
-  vector<cv::Point2f> match_next_pts;
-  for(auto iter=tracking_pts_.begin(); iter!=tracking_pts_.end(); i++) {
-    if(status[i] == 0 || last_frame_->getDepth(*iter) < 0
-      || std::fabs(last_frame_->getDepth(*iter) - frame->getDepth(cur_pts[i])) > 1) {
-      // lost point
-      iter = tracking_pts_.erase(iter);
-      continue;
-    } else {
-      *iter = cur_pts[i];
-      match_prev_pts.push_back(prev_pts[i]);
-      match_next_pts.push_back(cur_pts[i]);
-      iter++;
-      tracked_ids.push_back(map_point_ids_[i]);
+void Odometry::optimizeWindow() {
+  std::shared_ptr<Frame> ref_frame = active_frames_[0];
+  std::shared_ptr<Frame> cur_frame = active_frames_[active_frames_.size()-1];
+  vector<uint32_t> pt_ids;
+  vector<Vector3d> points;
+  vector<SE3> poses;
+  vector<cv::Mat> images;
+  vector<float *> colors;
+  local_map_->getAllPoints(pt_ids, points);
+  vector<Vector3d> visable_points;
+  vector<uint32_t> visable_pt_ids;
+  // TODO: get ref color patch in one function
+  for(int i = 0; i < points.size(); i++) {
+    Vector2d uv = ref_frame->toPixel(points[i]);
+    if(ref_frame->isInside(uv[0], uv[1], 2)) {
+      visable_pt_ids.push_back(pt_ids[i]);
+      visable_points.push_back(points[i]);
     }
   }
-  map_point_ids_ = tracked_ids;
+  ref_frame->getKeypointColors(visable_points, colors);
 
-  // plot the tracking feature points
-//  int rows = frame->left_img.rows;
-//  int cols = frame->left_img.cols;
-//  cv::Mat img_show ( frame->left_img.rows*2, frame->left_img.cols, CV_8UC3 );
-//  last_frame_->left_img.copyTo ( img_show ( cv::Rect ( 0,0,frame->left_img.cols, frame->left_img.rows ) ) );
-//  frame->left_img.copyTo ( img_show ( cv::Rect ( 0,frame->left_img.rows,frame->left_img.cols, frame->left_img.rows ) ) );
-//  for (int j = 0; j < match_prev_pts.size();j++)
-//  {
-//    float b = 255*float ( rand() ) /RAND_MAX;
-//    float g = 255*float ( rand() ) /RAND_MAX;
-//    float r = 255*float ( rand() ) /RAND_MAX;
-//    cv::circle ( img_show, cv::Point2d (match_prev_pts[j].x, match_prev_pts[j].y ), 2, cv::Scalar ( b,g,r ), 2 );
-//    cv::circle ( img_show, cv::Point2d (match_next_pts[j].x, match_next_pts[j].y + rows ), 2, cv::Scalar ( b,g,r ), 2 );
-//    cv::line ( img_show, cv::Point2d (match_prev_pts[j].x, match_prev_pts[j].y ), cv::Point2d (match_next_pts[j].x, match_next_pts[j].y + rows), cv::Scalar ( b,g,r ), 1 );
-//  }
-//  cv::imshow ( "result", img_show );
-//  cv::waitKey ( 0 );
+  for(int i =0; i < active_frames_.size(); i++) {
+    auto frame = active_frames_[i];
+    poses.push_back(frame->T_c_w_);
+    images.push_back(frame->left_img);
+  }
+
+  WindowDirectBA window_ba(cam_);
+  window_ba.optimize(poses, visable_points, images, colors);
+  //active_frames_[active_frames_.size()-1]->setPose(poses[poses.size()-1]);
+  for(int i =0; i < active_frames_.size(); i++)
+    active_frames_[i]->setPose(poses[i]);
+//  for(int i =0; i < pt_ids.size(); i++)
+//    local_map_->updatePoint(pt_ids[i], points[i]);
+
+  vector<uint32_t> outliners = cur_frame->getOutliner(visable_pt_ids, visable_points, colors);
+  cout << "outliners: " << outliners.size() << endl;
+  local_map_->removePoints(outliners);
+  // delete color data
+  for (auto &c: colors) delete[] c;
+  /*
+  std::shared_ptr<Frame> ref_frame = active_frames_[0];
+  std::shared_ptr<Frame> cur_frame = active_frames_[active_frames_.size()-1];
+  vector<uint32_t> pt_ids;
+  vector<Vector3d> points;
+  vector<float *> colors;
+  local_map_->getAllPoints(pt_ids, points);
+  ref_frame->getKeypointColors(points, colors);
+  vector<float> center_colors;
+  for(float* patch:colors) {
+    cout << patch[10] << endl;
+    center_colors.push_back(patch[10]);
+  }
+
+  for (auto &c: colors) delete[] c;
+  WindowDirectBA window_ba(cam_);
+  Eigen::Isometry3d T_c_w = Eigen::Isometry3d::Identity();
+//  Eigen::Quaterniond quat(ref_frame->T_c_w_.rotation_matrix());
+//  Eigen::Vector3d t(ref_frame->T_c_w_.translation());
+//  T_c_w.rotate(quat);
+//  T_c_w.pretranslate(t);
+  window_ba.poseEstimationDirect(points, center_colors, &cur_frame->left_img, T_c_w);
+  cur_frame->setPose(SE3(T_c_w.rotation(), T_c_w.translation()));
+   */
+}
+
+list<cv::Point2f> Odometry::getProjectedPoints() {
+  vector<uint32_t> pt_ids;
+  vector<Vector3d> points;
+  local_map_->getAllPoints(pt_ids, points);
+  list<cv::Point2f> pts;
+  for(Vector3d p3d:points) {
+    Vector2d p2d = last_frame_->toPixel(p3d);
+    if(!last_frame_->isInside(p2d[0], p2d[1], 0))
+      continue;
+    pts.push_back(cv::Point2f(p2d[0], p2d[1]));
+  }
+  return pts;
 }
 
 void Odometry::extractFeature(std::shared_ptr<Frame> frame) {
-  vector<cv::Point2f> kps;
-  cv::Mat gray;
-  cvtColor(frame->left_img, gray, CV_BGR2GRAY);
-  cv::goodFeaturesToTrack(gray, kps, MAX_CNT - tracking_pts_.size(), 0.01, MIN_DIST);
-  for(auto kp:kps) {
-    cv::Point3f map_point = frame->toWorldCoord(kp);
-    if(map_point.z <= 0) {
+  local_map_->clear();
+
+  int border = 50;
+  VecVec2d candidates;
+  frame->extractFeaturePoints(candidates, 4000, border);
+  // generate pixels and depth in reference frame
+  for (int i = 0; i < candidates.size(); i++) {
+    Vector3d map_point = frame->toWorldCoord(Vector2d(candidates[i]));
+    float depth = map_point[2];
+    if(depth <= 0 || std::isnan(depth) || std::isinf(depth)) {
       continue;
     }
-    // add more map points
-    uint32_t mpid = local_map_->addPoint(map_point);
-    map_point_ids_.push_back(mpid);
-    tracking_pts_.push_back(kp);
+    local_map_->addPoint(map_point, frame->getId());
   }
-}
-
-SE3 Odometry::estimatePose(std::shared_ptr<Frame> frame) {
-  // construct the 3d 2d observations
-  vector<cv::Point3f> pts3d;
-  vector<cv::Point2f> pts2d;
-  for (auto pt2d:tracking_pts_) {
-    pts2d.push_back(pt2d);
-  }
-  for (auto mpid:map_point_ids_) {
-    pts3d.push_back(local_map_->getPointById(mpid));
-  }
-  cout << "3d<->2d pairs: " << pts2d.size() << endl;
-  Mat K = ( cv::Mat_<double> ( 3,3 ) <<
-    cam_->fx_, 0, cam_->cx_,
-    0, cam_->fy_, cam_->cy_,
-    0,0,1
-  );
-  Mat rvec, tvec, inliers;
-  bool success = cv::solvePnPRansac(pts3d, pts2d, K, Mat(), rvec, tvec, false, 100, 4.0, 0.99, inliers);
-  int num_inliers_ = inliers.rows;
-  cout<<"pnp inliers: "<<num_inliers_<<endl;
-  SE3 T_c_w_estimated_ = SE3 (
-          SO3 (rvec.at<double>(0,0), rvec.at<double>(1,0), rvec.at<double>(2,0)),
-          Vector3d (tvec.at<double>(0,0), tvec.at<double>(1,0), tvec.at<double>(2,0))
-  );
-
-  // using bundle adjustment to optimize the pose
-  typedef g2o::BlockSolver<g2o::BlockSolverTraits<6,2>> Block;
-  Block::LinearSolverType* linearSolver = new g2o::LinearSolverDense<Block::PoseMatrixType>();
-  Block* solver_ptr = new Block ( linearSolver );
-  g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg ( solver_ptr );
-  g2o::SparseOptimizer optimizer;
-  optimizer.setAlgorithm ( solver );
-
-  g2o::VertexSE3Expmap* pose = new g2o::VertexSE3Expmap();
-  pose->setId ( 0 );
-  pose->setEstimate ( g2o::SE3Quat (
-          T_c_w_estimated_.rotation_matrix(), T_c_w_estimated_.translation()
-  ));
-  optimizer.addVertex ( pose );
-
-  // edges
-  for ( int i=0; i<inliers.rows; i++ )
-  {
-    int index = inliers.at<int> ( i,0 );
-    // 3D -> 2D projection
-    EdgeProjectXYZ2UVPoseOnly* edge = new EdgeProjectXYZ2UVPoseOnly();
-    edge->setId ( i );
-    edge->setVertex ( 0, pose );
-    edge->camera_ = cam_.get();
-    edge->point_ = Vector3d ( pts3d[index].x, pts3d[index].y, pts3d[index].z );
-    edge->setMeasurement ( Vector2d ( pts2d[index].x, pts2d[index].y ) );
-    edge->setInformation ( Eigen::Matrix2d::Identity() );
-    optimizer.addEdge ( edge );
-    // set the inlier map points
-//    match_3dpts_[index]->matched_times_++;
-  }
-
-  optimizer.initializeOptimization();
-  optimizer.optimize ( 10 );
-
-  T_c_w_estimated_ = SE3 (
-          pose->estimate().rotation(),
-          pose->estimate().translation()
-  );
-
-  cout<<"T_c_w_estimated_: "<<endl<<T_c_w_estimated_.matrix()<<endl;
-  return T_c_w_estimated_;
 }
 
 }

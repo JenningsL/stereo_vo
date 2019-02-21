@@ -11,6 +11,8 @@
 #include <opencv2/video/tracking.hpp>
 #include "frame.h"
 #include "local_map.h"
+#include "window_ba.h"
+#include "direct_pose_estimate.h"
 namespace stereo_vo {
 
 enum VOState {INIT, OK, LOST};
@@ -19,22 +21,22 @@ class Odometry {
 public:
   Odometry();
 //  ~Odometry();
-  std::shared_ptr<Frame> readImage(string l_img, string r_img);
-  list<cv::Point2f> getTrackingPts();
+  std::shared_ptr<Frame> addFrame(string l_img, string r_img);
+  list<cv::Point2f> getProjectedPoints();
   std::unique_ptr<LocalMap> local_map_;
-  vector<uint32_t> map_point_ids_; // correspond to tracking_pts_
 private:
-  int MIN_CNT = 150;
-  int MAX_CNT = 200;
-  int MIN_DIST = 20;
+  int MIN_CNT = 50;
+  int MAX_CNT = 2000;
+  int MIN_DIST = 10;
   void extractFeature(std::shared_ptr<Frame> frame);
   void trackFeature(std::shared_ptr<Frame> frame);
-  SE3 estimatePose(std::shared_ptr<Frame> frame);
+  void trackNewFrame(std::shared_ptr<Frame> frame);
+  void optimizeWindow();
   VOState state_;
   std::shared_ptr<Frame> last_frame_;
+  std::shared_ptr<Frame> ref_frame_;
   std::shared_ptr<Camera> cam_;
-  list<cv::Point2f> tracking_pts_; // tracking 2d points
-
+  vector<std::shared_ptr<Frame>> active_frames_;
 };
 
 }

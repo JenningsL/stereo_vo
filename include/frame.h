@@ -14,20 +14,28 @@ namespace stereo_vo {
 
 class Frame {
 public:
-  Frame(Mat left, Mat right, std::shared_ptr<Camera> cam);
+  Frame(Mat left, Mat right, std::shared_ptr<Camera> cam, uint32_t id);
   static std::shared_ptr<Frame> CreateFrame(Mat left, Mat right, std::shared_ptr<Camera> cam);
   void calDepth();
-  double getDepth(cv::Point2f pt);
+  double getDepth(Vector2d pt);
   void setPose(const SE3 T_c_w);
-  cv::Point3f toWorldCoord(cv::Point2f pt);
-  cv::Point2f toPixel(cv::Point3f pw);
+  Vector3d toWorldCoord(Vector2d pt);
+  Vector2d toPixel(Vector3d pw);
+  void getKeypointColors(const vector<Vector3d>& pws, vector<float*>& colors);
+  bool isInside(int x, int y, int border);
+  void extractFeaturePoints(VecVec2d& features, int nPoints, int border);
+  void setReference(bool ref) {is_ref = ref;}
+  bool isReference() {return is_ref;}
+  uint32_t getId();
+  vector<uint32_t> getOutliner(vector<uint32_t>& pt_ids, vector<Vector3d>& points, vector<float *>& colors);
   Mat left_img;
   Mat right_img;
   Mat disp;
   SE3 T_c_w_;
   std::shared_ptr<Camera> cam_;
 private:
-  long unsigned int id_;
+  uint32_t id_;
+  bool is_ref;
 };
 
 } // namespace stereo_vo

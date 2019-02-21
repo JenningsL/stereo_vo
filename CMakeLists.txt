@@ -3,6 +3,7 @@ project ( stereo_vo )
 
 set( CMAKE_CXX_COMPILER "g++" )
 set( CMAKE_BUILD_TYPE "Release" )
+#set(CMAKE_BUILD_TYPE Debug)
 #set( CMAKE_CXX_FLAGS "-std=c++11 -march=native -O3" )
 set( CMAKE_CXX_FLAGS "-std=c++11" )
 
@@ -25,6 +26,9 @@ include_directories( ${Sophus_INCLUDE_DIRS} )
 find_package( G2O REQUIRED )
 include_directories( ${G2O_INCLUDE_DIRS} )
 message(${G2O_TYPES_SBA})
+# Pangolin
+find_package( Pangolin REQUIRED )
+include_directories( ${Pangolin_INCLUDE_DIRS} )
 
 set( THIRD_PARTY_LIBS 
     ${OpenCV_LIBS}
@@ -32,6 +36,7 @@ set( THIRD_PARTY_LIBS
     ${G2O_CORE_LIBRARY}
     ${G2O_STUFF_LIBRARY}
     ${G2O_TYPES_SBA}
+    ${Pangolin_LIBRARIES}
 )
 ############### dependencies ######################
 include_directories( ${PROJECT_SOURCE_DIR}/include )
