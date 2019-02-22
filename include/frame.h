@@ -9,6 +9,7 @@
 #include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include "camera.h"
+#include "map_point.h"
 
 namespace stereo_vo {
 
@@ -27,7 +28,7 @@ public:
   void setReference(bool ref) {is_ref = ref;}
   bool isReference() {return is_ref;}
   uint32_t getId();
-  vector<uint32_t> getOutliner(vector<uint32_t>& pt_ids, vector<Vector3d>& points, vector<float *>& colors);
+  vector<MapPointPtr> getOutlier(vector<MapPointPtr>& points, vector<float *>& colors);
   Mat left_img;
   Mat right_img;
   Mat disp;

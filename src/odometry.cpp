@@ -13,7 +13,7 @@
 namespace stereo_vo {
 
 Odometry::Odometry() : state_(INIT) {
-  local_map_ = std::unique_ptr<LocalMap>(new LocalMap());
+  local_map_ = std::shared_ptr<LocalMap>(new LocalMap());
   cam_ = std::shared_ptr<Camera>(new Camera(707.0912, 707.0912, 601.8873, 183.1104));
 //  cam_ = std::shared_ptr<Camera>(new Camera(518.0, 519.0, 325.5, 253.5));
 }
@@ -39,6 +39,7 @@ std::shared_ptr<Frame> Odometry::addFrame(string l_img, string r_img) {
     if(active_frames_.size() > 3) {
       active_frames_.erase(active_frames_.begin());
     }
+
     optimizeWindow();
 
     if(frame->getId() - ref_frame_->getId() > 5) {
@@ -46,6 +47,8 @@ std::shared_ptr<Frame> Odometry::addFrame(string l_img, string r_img) {
       extractFeature(frame);
       ref_frame_ = frame;
     }
+    // update velocity
+    // last_delta_ = frame->T_c_w_ * last_frame_->T_c_w_.inverse();
   }
   last_frame_ = frame;
   return frame;
@@ -55,7 +58,10 @@ void Odometry::trackNewFrame(std::shared_ptr<Frame> frame) {
   VecVec2d px_ref;
   vector<double> depth_ref;
   Sophus::SE3 T21;
+  // assume constant motion
+  // T21 = last_delta_;
 
+  // TODO: project map point to last frame
   int nPoints = 2000;
   int border = 50;
   VecVec2d candidates;
@@ -81,18 +87,9 @@ void Odometry::optimizeWindow() {
   vector<SE3> poses;
   vector<cv::Mat> images;
   vector<float *> colors;
-  local_map_->getAllPoints(pt_ids, points);
-  vector<Vector3d> visable_points;
-  vector<uint32_t> visable_pt_ids;
-  // TODO: get ref color patch in one function
-  for(int i = 0; i < points.size(); i++) {
-    Vector2d uv = ref_frame->toPixel(points[i]);
-    if(ref_frame->isInside(uv[0], uv[1], 2)) {
-      visable_pt_ids.push_back(pt_ids[i]);
-      visable_points.push_back(points[i]);
-    }
-  }
-  ref_frame->getKeypointColors(visable_points, colors);
+  vector<MapPointPtr> mpts;
+  local_map_->projectToFrame(mpts, colors, ref_frame);
+  for(auto& mpt:mpts) {points.push_back(mpt->pt);}
 
   for(int i =0; i < active_frames_.size(); i++) {
     auto frame = active_frames_[i];
@@ -101,48 +98,23 @@ void Odometry::optimizeWindow() {
   }
 
   WindowDirectBA window_ba(cam_);
-  window_ba.optimize(poses, visable_points, images, colors);
+  window_ba.optimize(poses, points, images, colors);
   //active_frames_[active_frames_.size()-1]->setPose(poses[poses.size()-1]);
   for(int i =0; i < active_frames_.size(); i++)
     active_frames_[i]->setPose(poses[i]);
 //  for(int i =0; i < pt_ids.size(); i++)
 //    local_map_->updatePoint(pt_ids[i], points[i]);
 
-  vector<uint32_t> outliners = cur_frame->getOutliner(visable_pt_ids, visable_points, colors);
+  vector<MapPointPtr> outliners = cur_frame->getOutlier(mpts, colors);
   cout << "outliners: " << outliners.size() << endl;
   local_map_->removePoints(outliners);
   // delete color data
   for (auto &c: colors) delete[] c;
-  /*
-  std::shared_ptr<Frame> ref_frame = active_frames_[0];
-  std::shared_ptr<Frame> cur_frame = active_frames_[active_frames_.size()-1];
-  vector<uint32_t> pt_ids;
-  vector<Vector3d> points;
-  vector<float *> colors;
-  local_map_->getAllPoints(pt_ids, points);
-  ref_frame->getKeypointColors(points, colors);
-  vector<float> center_colors;
-  for(float* patch:colors) {
-    cout << patch[10] << endl;
-    center_colors.push_back(patch[10]);
-  }
-
-  for (auto &c: colors) delete[] c;
-  WindowDirectBA window_ba(cam_);
-  Eigen::Isometry3d T_c_w = Eigen::Isometry3d::Identity();
-//  Eigen::Quaterniond quat(ref_frame->T_c_w_.rotation_matrix());
-//  Eigen::Vector3d t(ref_frame->T_c_w_.translation());
-//  T_c_w.rotate(quat);
-//  T_c_w.pretranslate(t);
-  window_ba.poseEstimationDirect(points, center_colors, &cur_frame->left_img, T_c_w);
-  cur_frame->setPose(SE3(T_c_w.rotation(), T_c_w.translation()));
-   */
 }
 
 list<cv::Point2f> Odometry::getProjectedPoints() {
-  vector<uint32_t> pt_ids;
   vector<Vector3d> points;
-  local_map_->getAllPoints(pt_ids, points);
+  local_map_->getAllPoints(points);
   list<cv::Point2f> pts;
   for(Vector3d p3d:points) {
     Vector2d p2d = last_frame_->toPixel(p3d);

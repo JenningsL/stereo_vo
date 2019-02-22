@@ -6,21 +6,23 @@
 #define STEREO_VO_LOCAL_MAP_H
 
 #include "common.h"
+#include "map_point.h"
+#include "frame.h"
+
 namespace stereo_vo {
 
 class LocalMap {
 public:
   uint32_t addPoint(Vector3d p, uint32_t frame_id);
-  void updatePoint(uint32_t id, Vector3d p);
-  Vector3d getPointById(uint32_t id);
-  void getAllPoints(vector<uint32_t>& ids, vector<Vector3d>& points);
+  void projectToFrame(vector<MapPointPtr>& mpts, vector<float *>& patches, std::shared_ptr<Frame> ref_frame);
+  void getAllPoints(vector<Vector3d>& points);
   void removeFrame(uint32_t fid);
-  void removePoints(const vector<uint32_t>& ids);
+  void removePoints(const vector<MapPointPtr>& mpts);
   int countPoints();
   void clear();
 private:
-  std::unordered_map<uint32_t, Vector3d> points_;
-  std::unordered_map<uint32_t, vector<uint32_t>> frame_pts_;
+  unordered_map<uint32_t, MapPointPtr> immature_points;
+  unordered_map<uint32_t, MapPointPtr> map_points;
 };
 
 }

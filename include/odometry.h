@@ -13,17 +13,18 @@
 #include "local_map.h"
 #include "window_ba.h"
 #include "direct_pose_estimate.h"
+#include "map_point.h"
 namespace stereo_vo {
 
 enum VOState {INIT, OK, LOST};
 
 class Odometry {
 public:
+  // EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   Odometry();
-//  ~Odometry();
   std::shared_ptr<Frame> addFrame(string l_img, string r_img);
   list<cv::Point2f> getProjectedPoints();
-  std::unique_ptr<LocalMap> local_map_;
+  std::shared_ptr<LocalMap> local_map_;
 private:
   int MIN_CNT = 50;
   int MAX_CNT = 2000;
@@ -37,6 +38,7 @@ private:
   std::shared_ptr<Frame> ref_frame_;
   std::shared_ptr<Camera> cam_;
   vector<std::shared_ptr<Frame>> active_frames_;
+  // SE3 last_delta_; // motion from k-2 to k-1
 };
 
 }

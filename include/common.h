@@ -47,6 +47,7 @@ inline float GetPixelValue(const cv::Mat &img, float x, float y) {
   );
 }
 
+
 typedef vector<Sophus::SE3, Eigen::aligned_allocator<Sophus::SE3>> VecSE3;
 typedef vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> VecVec3d;
 typedef vector<Eigen::Vector2d, Eigen::aligned_allocator<Eigen::Vector2d>> VecVec2d;

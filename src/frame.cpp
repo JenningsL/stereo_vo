@@ -107,10 +107,10 @@ uint32_t Frame::getId() {
   return id_;
 }
 
-vector<uint32_t> Frame::getOutliner(vector<uint32_t>& pt_ids, vector<Vector3d>& points, vector<float *>& colors) {
-  vector<uint32_t> outliner;
-  for(int i = 0; i < pt_ids.size(); i++) {
-    Vector2d uv = toPixel(points[i]);
+vector<MapPointPtr> Frame::getOutlier(vector<MapPointPtr>& points, vector<float *>& colors) {
+  vector<MapPointPtr> outliner;
+  for(int i = 0; i < points.size(); i++) {
+    Vector2d uv = toPixel(points[i]->pt);
     int u = uv[0];
     int v = uv[1];
     if(!isInside(u, v, 2))
@@ -123,7 +123,7 @@ vector<uint32_t> Frame::getOutliner(vector<uint32_t>& pt_ids, vector<Vector3d>& 
       }
     }
     if(err > 640) {
-      outliner.push_back(pt_ids[i]);
+      outliner.push_back(points[i]);
     }
   }
   return outliner;

@@ -6,6 +6,7 @@ add_library( stereo_vo SHARED
     g2o_types.cpp
     window_ba.cpp
     direct_pose_estimate.cpp
+    map_point.cpp
 )
 
 target_link_libraries( stereo_vo
