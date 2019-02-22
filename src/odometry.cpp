@@ -35,12 +35,13 @@ std::shared_ptr<Frame> Odometry::addFrame(string l_img, string r_img) {
     // tracking
     trackNewFrame(frame);
     // local BA
+    /*
     active_frames_.push_back(frame);
     if(active_frames_.size() > 3) {
       active_frames_.erase(active_frames_.begin());
     }
-
     optimizeWindow();
+     */
 
     if(frame->getId() - ref_frame_->getId() > 5) {
       // change ref frame
@@ -52,20 +53,19 @@ std::shared_ptr<Frame> Odometry::addFrame(string l_img, string r_img) {
   }
   last_frame_ = frame;
   return frame;
-};
+}
 
-void Odometry::trackNewFrame(std::shared_ptr<Frame> frame) {
+void Odometry::trackNewFrame(FramePtr frame) {
+  // project map point to last frame
+  vector<MapPointPtr> mpts;
+  vector<Vector2d> candidates;
+  local_map_->projectToFrame(candidates, mpts, last_frame_);
+
   VecVec2d px_ref;
   vector<double> depth_ref;
   Sophus::SE3 T21;
   // assume constant motion
   // T21 = last_delta_;
-
-  // TODO: project map point to last frame
-  int nPoints = 2000;
-  int border = 50;
-  VecVec2d candidates;
-  last_frame_->extractFeaturePoints(candidates, nPoints, border);
   // generate pixels and depth in reference frame
   for (int i = 0; i < candidates.size(); i++) {
     float depth = last_frame_->getDepth(candidates[i]);
@@ -79,17 +79,27 @@ void Odometry::trackNewFrame(std::shared_ptr<Frame> frame) {
   frame->setPose(T21*last_frame_->T_c_w_);
 }
 
+bool isNewKeyFrame(FramePtr frame) {
+  // TODO: determined based on mean square optical flow
+  return true;
+}
+
 void Odometry::optimizeWindow() {
   std::shared_ptr<Frame> ref_frame = active_frames_[0];
   std::shared_ptr<Frame> cur_frame = active_frames_[active_frames_.size()-1];
-  vector<uint32_t> pt_ids;
-  vector<Vector3d> points;
+
   vector<SE3> poses;
   vector<cv::Mat> images;
   vector<float *> colors;
+
   vector<MapPointPtr> mpts;
-  local_map_->projectToFrame(mpts, colors, ref_frame);
-  for(auto& mpt:mpts) {points.push_back(mpt->pt);}
+  vector<Vector2d> projections;
+  vector<Vector3d> points;
+  local_map_->projectToFrame(projections, mpts, ref_frame);
+  for(auto& mpt:mpts) {
+    points.push_back(mpt->pt);
+  }
+  ref_frame->getKeypointColors(points, colors);
 
   for(int i =0; i < active_frames_.size(); i++) {
     auto frame = active_frames_[i];
@@ -102,8 +112,8 @@ void Odometry::optimizeWindow() {
   //active_frames_[active_frames_.size()-1]->setPose(poses[poses.size()-1]);
   for(int i =0; i < active_frames_.size(); i++)
     active_frames_[i]->setPose(poses[i]);
-//  for(int i =0; i < pt_ids.size(); i++)
-//    local_map_->updatePoint(pt_ids[i], points[i]);
+  for(int i =0; i < mpts.size(); i++)
+    mpts[i]->update(points[i]);
 
   vector<MapPointPtr> outliners = cur_frame->getOutlier(mpts, colors);
   cout << "outliners: " << outliners.size() << endl;
@@ -112,20 +122,21 @@ void Odometry::optimizeWindow() {
   for (auto &c: colors) delete[] c;
 }
 
-list<cv::Point2f> Odometry::getProjectedPoints() {
+void Odometry::getProjectedPoints(vector<cv::Point2f>& pts, vector<float>& depth) {
   vector<Vector3d> points;
   local_map_->getAllPoints(points);
-  list<cv::Point2f> pts;
   for(Vector3d p3d:points) {
     Vector2d p2d = last_frame_->toPixel(p3d);
     if(!last_frame_->isInside(p2d[0], p2d[1], 0))
       continue;
     pts.push_back(cv::Point2f(p2d[0], p2d[1]));
+    depth.push_back(p3d[2]);
   }
-  return pts;
+//  auto it = max_element(std::begin(depth), std::end(depth));
+//  cout << "max depth: " << *it << endl;
 }
 
-void Odometry::extractFeature(std::shared_ptr<Frame> frame) {
+void Odometry::extractFeature(FramePtr frame) {
   local_map_->clear();
 
   int border = 50;

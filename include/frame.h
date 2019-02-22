@@ -15,6 +15,7 @@ namespace stereo_vo {
 
 class Frame {
 public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   Frame(Mat left, Mat right, std::shared_ptr<Camera> cam, uint32_t id);
   static std::shared_ptr<Frame> CreateFrame(Mat left, Mat right, std::shared_ptr<Camera> cam);
   void calDepth();
@@ -29,15 +30,20 @@ public:
   bool isReference() {return is_ref;}
   uint32_t getId();
   vector<MapPointPtr> getOutlier(vector<MapPointPtr>& points, vector<float *>& colors);
+  // TODO: use other frame to update candidates map points
+  void updateCandidates(std::shared_ptr<Frame> frame);
   Mat left_img;
   Mat right_img;
   Mat disp;
+  unordered_map<uint32_t, MapPointPtr> candidates;
   SE3 T_c_w_;
   std::shared_ptr<Camera> cam_;
 private:
   uint32_t id_;
   bool is_ref;
 };
+
+typedef std::shared_ptr<Frame> FramePtr;
 
 } // namespace stereo_vo
 

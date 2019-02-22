@@ -13,6 +13,7 @@ class MapPoint {
 public:
   MapPoint(Vector3d p, uint32_t host, uint32_t id)
     :pt(p), host_(host), id(id) {};
+  void update(const Vector3d& p);
   Vector3d pt;
   uint32_t id;
 private:

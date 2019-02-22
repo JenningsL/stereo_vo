@@ -23,15 +23,15 @@ public:
   // EIGEN_MAKE_ALIGNED_OPERATOR_NEW
   Odometry();
   std::shared_ptr<Frame> addFrame(string l_img, string r_img);
-  list<cv::Point2f> getProjectedPoints();
+  void getProjectedPoints(vector<cv::Point2f>& pts, vector<float>& depth);
   std::shared_ptr<LocalMap> local_map_;
 private:
   int MIN_CNT = 50;
   int MAX_CNT = 2000;
   int MIN_DIST = 10;
-  void extractFeature(std::shared_ptr<Frame> frame);
-  void trackFeature(std::shared_ptr<Frame> frame);
-  void trackNewFrame(std::shared_ptr<Frame> frame);
+  void extractFeature(FramePtr frame);
+  bool isNewKeyFrame(FramePtr frame);
+  void trackNewFrame(FramePtr frame);
   void optimizeWindow();
   VOState state_;
   std::shared_ptr<Frame> last_frame_;

@@ -63,6 +63,7 @@ void WindowDirectBA::optimize(vector<SE3>& poses, vector<Vector3d>& points, vect
     if(i == 0) {
       pose_vertex->setFixed(true);
     }
+    pose_vertex->setFixed(true);
     optimizer.addVertex(pose_vertex);
   }
   // add points vertices

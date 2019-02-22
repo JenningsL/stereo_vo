@@ -21,36 +21,27 @@ void LocalMap::clear() {
   }
 }
 
-void LocalMap::projectToFrame(vector<MapPointPtr>& mpts, vector<float *>& patches, std::shared_ptr<Frame> ref_frame) {
-  vector<Vector3d> pts;
+void LocalMap::projectToFrame(vector<Vector2d>& projections, vector<MapPointPtr>& m_points, std::shared_ptr<Frame> ref_frame) {
   for(auto& pair:map_points) {
     MapPointPtr point = pair.second;
-//  for(auto& point:map_points) {
     Vector2d uv = ref_frame->toPixel(point->pt);
     if(ref_frame->isInside(uv[0], uv[1], 2)) {
-      mpts.push_back(point);
-      pts.push_back(point->pt);
+      projections.push_back(uv);
+      m_points.push_back(point);
     }
   }
-  ref_frame->getKeypointColors(pts, patches);
 }
 
 void LocalMap::getAllPoints(vector<Vector3d>& points) {
   for(auto pair:map_points) {
     points.push_back(pair.second->pt);
   }
-//  for(auto mp:map_points)
-//    points.push_back(mp.pt);
 }
 
 void LocalMap::removePoints(const vector<MapPointPtr>& mpts) {
   for(auto p:mpts) {
     map_points.erase(p->id);
   }
-}
-
-int LocalMap::countPoints() {
-  return map_points.size();
 }
 
 }
