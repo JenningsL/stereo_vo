@@ -13,7 +13,7 @@ namespace stereo_vo {
 
 class LocalMap {
 public:
-  uint32_t addPoint(Vector3d p, uint32_t frame_id);
+  uint32_t addPoint(MapPointPtr map_point);
   /**
    * Project all mature map point to a frame, only those visible in image are kept
    * @param projections : visible projection 2d points
@@ -21,7 +21,9 @@ public:
    * @param ref_frame
    */
   void projectToFrame(vector<Vector2d>& projections, vector<MapPointPtr>& m_points, std::shared_ptr<Frame> ref_frame);
-  void getAllPoints(vector<Vector3d>& points);
+  void getAllPoints(vector<MapPointPtr>& points);
+  void removeInvisibleMapPoints(FramePtr frame);
+  void removeOutlier(FramePtr ref, FramePtr cur);
   void removePoints(const vector<MapPointPtr>& mpts);
   void clear();
 private:

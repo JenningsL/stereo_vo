@@ -12,7 +12,6 @@ namespace stereo_vo {
 class Camera
 {
 public:
-  typedef std::shared_ptr<Camera> Ptr;
   float   fx_, fy_, cx_, cy_;
   float baseline = 0.5379;
 
@@ -27,6 +26,8 @@ public:
   Vector2d world2pixel ( const Vector3d& p_w, const SE3& T_c_w );
 
 };
+
+typedef std::shared_ptr<Camera> CameraPtr;
 
 }
 

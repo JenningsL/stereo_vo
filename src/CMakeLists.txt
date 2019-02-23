@@ -7,6 +7,7 @@ add_library( stereo_vo SHARED
     window_ba.cpp
     direct_pose_estimate.cpp
     map_point.cpp
+    depth_filter.cpp
 )
 
 target_link_libraries( stereo_vo

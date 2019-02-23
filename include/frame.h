@@ -10,6 +10,7 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include "camera.h"
 #include "map_point.h"
+#include "depth_filter.h"
 
 namespace stereo_vo {
 
@@ -19,15 +20,13 @@ public:
   Frame(Mat left, Mat right, std::shared_ptr<Camera> cam, uint32_t id);
   static std::shared_ptr<Frame> CreateFrame(Mat left, Mat right, std::shared_ptr<Camera> cam);
   void calDepth();
-  double getDepth(Vector2d pt);
+  double getDepth(const Vector2d& pt);
   void setPose(const SE3 T_c_w);
-  Vector3d toWorldCoord(Vector2d pt);
-  Vector2d toPixel(Vector3d pw);
+  Vector3d toWorldCoord(const Vector2d& pt);
+  Vector2d toPixel(const Vector3d& pw);
   void getKeypointColors(const vector<Vector3d>& pws, vector<float*>& colors);
   bool isInside(int x, int y, int border);
-  void extractFeaturePoints(VecVec2d& features, int nPoints, int border);
-  void setReference(bool ref) {is_ref = ref;}
-  bool isReference() {return is_ref;}
+  void selectCandidates();
   uint32_t getId();
   vector<MapPointPtr> getOutlier(vector<MapPointPtr>& points, vector<float *>& colors);
   // TODO: use other frame to update candidates map points
@@ -38,9 +37,9 @@ public:
   unordered_map<uint32_t, MapPointPtr> candidates;
   SE3 T_c_w_;
   std::shared_ptr<Camera> cam_;
+  bool is_keyframe;
 private:
   uint32_t id_;
-  bool is_ref;
 };
 
 typedef std::shared_ptr<Frame> FramePtr;
