@@ -56,7 +56,7 @@ bool epipolarSearch(
 }
 
 // 对整个深度图进行更新
-bool update(const CameraPtr cam, const Mat &ref, const Mat &curr, const SE3 &T_C_R, const vector<Vector2d> &pts_2d, vector<float> &depth,
+bool update(const CameraPtr cam, const Mat &ref, const Mat &curr, const SE3 &T_C_R, const VecVec2d &pts_2d, vector<float> &depth,
             vector<float> &depth_cov, vector<bool>& success) {
   #pragma omp parallel for
   for (int i = 0; i < depth.size(); i++) {

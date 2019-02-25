@@ -52,7 +52,7 @@ bool update(
         const Mat& ref,
         const Mat& curr,
         const SE3& T_C_R,
-        const vector<Vector2d>& pts_2d,
+        const VecVec2d& pts_2d,
         vector<float>& depth,
         vector<float>& depth_cov,
         vector<bool>& success

@@ -2,7 +2,7 @@ add_library( stereo_vo SHARED
     frame.cpp
     odometry.cpp
     camera.cpp
-    local_map.cpp
+        map.cpp
     g2o_types.cpp
     window_ba.cpp
     direct_pose_estimate.cpp

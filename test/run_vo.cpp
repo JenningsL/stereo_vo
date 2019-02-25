@@ -69,7 +69,6 @@ void Draw(pangolin::View &d_cam,pangolin::OpenGlRenderState& s_cam, const VecSE3
   glEnd();
 
   pangolin::FinishFrame();
-  usleep(50000);   // sleep 50 ms
 }
 
 int main ( int argc, char** argv )
@@ -78,17 +77,6 @@ int main ( int argc, char** argv )
   std::shared_ptr<Frame> frame;
   string data_dir = "/Users/jennings/Desktop/stereo_vo/data/08";
 
-  cv::viz::Viz3d vis ( "Visual Odometry" );
-  cv::viz::WCoordinateSystem world_coor ( 1.0 ), camera_coor ( 0.5 );
-  cv::Point3d cam_pos ( 0, -1.0, -1.0 ), cam_focal_point ( 0,0,0 ), cam_y_dir ( 0,1,0 );
-  cv::Affine3d cam_pose = cv::viz::makeCameraPose ( cam_pos, cam_focal_point, cam_y_dir );
-  vis.setViewerPose ( cam_pose );
-
-  world_coor.setRenderingProperty ( cv::viz::LINE_WIDTH, 2.0 );
-  camera_coor.setRenderingProperty ( cv::viz::LINE_WIDTH, 1.0 );
-  vis.showWidget ( "World", world_coor );
-  vis.showWidget ( "Camera", camera_coor );
-
   // create pangolin window and plot the trajectory
   pangolin::CreateWindowAndBind("Trajectory Viewer", 1024, 768);
   glEnable(GL_DEPTH_TEST);
@@ -96,11 +84,11 @@ int main ( int argc, char** argv )
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
   pangolin::OpenGlRenderState s_cam(
-          pangolin::ProjectionMatrix(
-                  1024, 768, 500,
-                  500, 512, 389,
-                  0.1, 1000),
-          pangolin::ModelViewLookAt(0, 1, -1, 0, 0, 0, 0.0, -1.0, 0.0)
+    pangolin::ProjectionMatrix(
+      1024, 768, 500,
+      500, 512, 389,
+      0.1, 1000),
+    pangolin::ModelViewLookAt(0, -0.3, -0.1, 0, 0, 0, 0.0, -1.0, 0.0)
   );
 
   pangolin::View &d_cam = pangolin::CreateDisplay()
@@ -111,7 +99,6 @@ int main ( int argc, char** argv )
     char buffer [10];
     sprintf(buffer, "%06d.png", i);
     string fname(buffer);
-    cout << data_dir+"/image_2/"+fname << endl;
 
     frame = vo.addFrame(data_dir+"/image_2/"+fname, data_dir+"/image_3/"+fname);
     // draw
@@ -126,28 +113,15 @@ int main ( int argc, char** argv )
 
     // show the map and the camera pose
     SE3 Twc = frame->T_c_w_.inverse();
-    cout << "Twc: " << endl << Twc.matrix() << endl;
-
-//    cv::Affine3d M (
-//      cv::Affine3d::Mat3 (
-//        Twc.rotation_matrix() ( 0,0 ), Twc.rotation_matrix() ( 0,1 ), Twc.rotation_matrix() ( 0,2 ),
-//        Twc.rotation_matrix() ( 1,0 ), Twc.rotation_matrix() ( 1,1 ), Twc.rotation_matrix() ( 1,2 ),
-//        Twc.rotation_matrix() ( 2,0 ), Twc.rotation_matrix() ( 2,1 ), Twc.rotation_matrix() ( 2,2 )
-//      ),
-//      cv::Affine3d::Vec3 (
-//        Twc.translation() ( 0,0 ), Twc.translation() ( 1,0 ), Twc.translation() ( 2,0 )
-//      )
-//    );
+    // cout << "Twc: " << endl << Twc.matrix() << endl;
 
     cv::imshow("corners", img_show);
     cv::waitKey(1);
-//    vis.setWidgetPose("Camera", M);
-//    vis.spinOnce (1, false);
 
     VecSE3 poses;
     VecVec3d points;
     vector<MapPointPtr> all_points;
-    vo.local_map_->getAllPoints(all_points);
+    vo.map->getAllPoints(all_points);
     for(FramePtr frame:vo.key_frames) {
       poses.push_back(frame->T_c_w_);
     }

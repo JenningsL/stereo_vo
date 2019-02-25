@@ -100,7 +100,7 @@ void DirectPoseEstimationSingleLayer(
     cost /= nGood;
 
     if (iter > 0 && cost > lastCost) {
-      cout << "cost increased: " << cost << ", " << lastCost << endl;
+      // cout << "cost increased: " << cost << ", " << lastCost << endl;
       break;
     }
     lastCost = cost;

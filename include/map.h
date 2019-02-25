@@ -11,7 +11,7 @@
 
 namespace stereo_vo {
 
-class LocalMap {
+class Map {
 public:
   uint32_t addPoint(MapPointPtr map_point);
   /**
@@ -20,16 +20,15 @@ public:
    * @param m_points : corresponding map points
    * @param ref_frame
    */
-  void projectToFrame(vector<Vector2d>& projections, vector<MapPointPtr>& m_points, std::shared_ptr<Frame> ref_frame);
+  void projectToFrame(VecVec2d& projections, vector<MapPointPtr>& m_points, std::shared_ptr<Frame> ref_frame);
   void getAllPoints(vector<MapPointPtr>& points);
+  void getLocalPoints(vector<MapPointPtr>& points);
   void removeInvisibleMapPoints(FramePtr frame);
   void removeOutlier(FramePtr ref, FramePtr cur);
-  void removePoints(const vector<MapPointPtr>& mpts);
   void clear();
 private:
-  unordered_map<uint32_t, MapPointPtr> immature_points;
   unordered_map<uint32_t, MapPointPtr> map_points;
-  unordered_map<uint32_t, MapPointPtr> out_points;
+  unordered_map<uint32_t, MapPointPtr> local_points;
 };
 
 }

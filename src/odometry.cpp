@@ -13,7 +13,7 @@
 namespace stereo_vo {
 
 Odometry::Odometry() : state_(INIT) {
-  local_map_ = std::shared_ptr<LocalMap>(new LocalMap());
+  map = std::shared_ptr<Map>(new Map());
   cam_ = std::shared_ptr<Camera>(new Camera(707.0912, 707.0912, 601.8873, 183.1104));
 //  cam_ = std::shared_ptr<Camera>(new Camera(518.0, 519.0, 325.5, 253.5));
 }
@@ -29,40 +29,43 @@ std::shared_ptr<Frame> Odometry::addFrame(string l_img, string r_img) {
     frame->is_keyframe = true;
     key_frames.push_back(frame);
     frame->selectCandidates();
-    activateMapPoints(frame, 10);
+    activateMapPoints(frame);
     active_frames_.push_back(frame);
     state_ = OK;
   } else if(state_ == OK) {
     // tracking using lastest keyframe
     trackNewFrame(frame);
     frame->selectCandidates();
-    // update depth
-//    if(next_keyframe)
-//      next_keyframe->updateCandidates(frame);
-    // local BA
-    /*
-    active_frames_.push_back(frame);
-    if(active_frames_.size() > 3) {
-      active_frames_.erase(active_frames_.begin());
+    // FIXME: update depth is slow
+    if(next_keyframe && false) {
+      auto begin = std::chrono::steady_clock::now();
+      next_keyframe->updateCandidates(frame);
+      auto end = std::chrono::steady_clock::now();
+      cout << "Update depth time consumed: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << endl;
     }
-    optimizeWindow();
-     */
+
+    // local BA
+    //optimizeWindow();
 
     if(isNewKeyFrame(frame)) {
+      cout << "New keyframe: " << frame->getId() << endl;
       if(next_keyframe) {
-//        activateMapPoints(next_keyframe, depth_filter::min_cov);
-        activateMapPoints(next_keyframe, 10);
         key_frames.push_back(next_keyframe);
+        auto begin = std::chrono::steady_clock::now();
+        optimizeWindow();
+        auto end = std::chrono::steady_clock::now();
+        cout << "Local BA time consumed: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << endl;
+        activateMapPoints(next_keyframe);
       }
       // update next_keyframe
       frame->is_keyframe = true;
       next_keyframe = frame;
     }
     // update velocity
-    // last_delta_ = frame->T_c_w_ * last_frame_->T_c_w_.inverse();
+    last_delta_ = frame->T_c_w_ * all_frames.back()->T_c_w_.inverse();
 
-    local_map_->removeInvisibleMapPoints(frame);
-    local_map_->removeOutlier(key_frames.back(), frame);
+    map->removeInvisibleMapPoints(frame);
+    map->removeOutlier(key_frames.back(), frame);
   }
   all_frames.push_back(frame);
   return frame;
@@ -70,28 +73,29 @@ std::shared_ptr<Frame> Odometry::addFrame(string l_img, string r_img) {
 
 bool Odometry::isNewKeyFrame(FramePtr frame) {
   // TODO: determined based on mean square optical flow
-  return frame->getId() - key_frames.back()->getId() > 3;
+  SE3 delta = frame->T_c_w_ * key_frames.back()->T_c_w_.inverse();
+  double t = delta.translation().norm();
+  cout << "t_norm: " << t << endl;
+  return t > 0.03;
 }
 
 void Odometry::trackNewFrame(FramePtr frame) {
-  // project map point to the latest keyframe
   vector<MapPointPtr> mpts;
-  vector<Vector2d> candidates;
-  // FramePtr latest_keyframe = key_frames.back();
-  FramePtr latest_keyframe = all_frames.back();
-  local_map_->projectToFrame(candidates, mpts, latest_keyframe);
+  VecVec2d candidates;
+  FramePtr last_frame = all_frames.back();
+  map->projectToFrame(candidates, mpts, last_frame);
 
   VecVec2d px_ref;
   vector<double> depth_ref;
   Sophus::SE3 T21;
-  // assume constant motion
+  // FIXME: assume constant motion is not working
   // T21 = last_delta_;
   // generate pixels and depth in reference frame
   std::random_shuffle(candidates.begin(), candidates.end());
   int max_num = 2000;
   int count = 0;
   for (int i = 0; i < candidates.size() && count < max_num; i++) {
-    float depth = latest_keyframe->getDepth(candidates[i]);
+    float depth = last_frame->getDepth(candidates[i]);
     if(depth <= 0 || std::isnan(depth) || std::isinf(depth)) {
       continue;
     }
@@ -99,86 +103,87 @@ void Odometry::trackNewFrame(FramePtr frame) {
     depth_ref.push_back(depth);
     count++;
   }
-  cout << "Tracking with " << px_ref.size() << " map points" << endl;
-  DirectPoseEstimationMultiLayer(latest_keyframe->left_img, frame->left_img, px_ref, depth_ref, cam_, T21);
-  frame->setPose(T21*latest_keyframe->T_c_w_);
+  auto begin = std::chrono::steady_clock::now();
+  cout << "Tracking with " << px_ref.size() << " map points. ";
+  DirectPoseEstimationMultiLayer(last_frame->left_img, frame->left_img, px_ref, depth_ref, cam_, T21);
+  frame->setPose(T21*last_frame->T_c_w_);
+  auto end = std::chrono::steady_clock::now();
+  cout << "Time consumed: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << endl;
 }
 
 void Odometry::optimizeWindow() {
-  std::shared_ptr<Frame> ref_frame = active_frames_[0];
-  std::shared_ptr<Frame> cur_frame = active_frames_[active_frames_.size()-1];
+  if(key_frames.size() < 2) {return;}
+  int ref_i = std::max(int(key_frames.size()-3), 0);
+  std::shared_ptr<Frame> ref_frame = key_frames[ref_i];
 
-  vector<SE3> poses;
+  VecSE3 poses;
   vector<cv::Mat> images;
   vector<float *> colors;
 
   vector<MapPointPtr> mpts;
-  vector<Vector2d> projections;
-  vector<Vector3d> points;
-  local_map_->projectToFrame(projections, mpts, ref_frame);
+  VecVec2d projections;
+  VecVec3d points;
+  map->projectToFrame(projections, mpts, ref_frame);
   for(auto& mpt:mpts) {
     points.push_back(mpt->pt);
   }
   ref_frame->getKeypointColors(points, colors);
 
-  for(int i =0; i < active_frames_.size(); i++) {
-    auto frame = active_frames_[i];
-    poses.push_back(frame->T_c_w_);
-    images.push_back(frame->left_img);
+  vector<FramePtr> opt_frames;
+  for(int i = key_frames.size()-1; i >= key_frames.size()-3 && i >= 0; i--) {
+    auto frame = key_frames[i];
+    poses.insert(poses.begin(), frame->T_c_w_);
+    images.insert(images.begin(), frame->left_img);
+    opt_frames.insert(opt_frames.begin(), frame);
   }
+
+  //if(poses.size() < 3) {return;}
 
   WindowDirectBA window_ba(cam_);
   window_ba.optimize(poses, points, images, colors);
-  //active_frames_[active_frames_.size()-1]->setPose(poses[poses.size()-1]);
-  for(int i =0; i < active_frames_.size(); i++)
-    active_frames_[i]->setPose(poses[i]);
-  for(int i =0; i < mpts.size(); i++)
-    mpts[i]->update(points[i]);
+  for(int i =0; i < opt_frames.size(); i++)
+    opt_frames[i]->setPose(poses[i]);
+//  for(int i =0; i < mpts.size(); i++)
+//    mpts[i]->update(points[i]);
 
-  vector<MapPointPtr> outliners = cur_frame->getOutlier(mpts, colors);
-  cout << "outliners: " << outliners.size() << endl;
-  local_map_->removePoints(outliners);
   // delete color data
   for (auto &c: colors) delete[] c;
 }
 
 void Odometry::getProjectedPoints(vector<cv::Point2f>& pts, vector<float>& depth) {
   vector<MapPointPtr> points;
-  local_map_->getAllPoints(points);
-  std::random_shuffle(points.begin(), points.end());
+  vector<MapPointPtr> visiable_points;
+  map->getLocalPoints(points);
+  for(MapPointPtr mp:points) {
+    Vector2d p2d = all_frames.back()->toPixel(mp->pt);
+    if(!all_frames.back()->isInside(p2d[0], p2d[1], 0))
+      continue;
+    visiable_points.push_back(mp);
+  }
+
+  std::random_shuffle(visiable_points.begin(), visiable_points.end());
   int max_num = 2000;
   int count = 0;
   for(MapPointPtr mp:points) {
     if(count >= max_num)
       break;
-    Vector2d p2d = all_frames.back()->toPixel(mp->pt);
-    if(!all_frames.back()->isInside(p2d[0], p2d[1], 0))
-      continue;
+    FramePtr last_frame =  all_frames.back();
+    Vector3d p_cam = last_frame->T_c_w_.rotation_matrix() * mp->pt + last_frame->T_c_w_.translation();
+    Vector2d p2d = last_frame->toPixel(mp->pt);
     pts.push_back(cv::Point2f(p2d[0], p2d[1]));
-    depth.push_back(mp->pt[2]);
+    depth.push_back(p_cam[2]);
     count++;
   }
 //  auto it = max_element(std::begin(depth), std::end(depth));
 //  cout << "max depth: " << *it << endl;
 }
 
-void Odometry::activateMapPoints(FramePtr frame, float cov_threshold) {
-  // local_map_->clear();
-  // vector<MapPointPtr> points;
-  // local_map_->getAllPoints(points);
+void Odometry::activateMapPoints(FramePtr frame) {
   // TODO: select points to add
   for(auto pair:frame->candidates) {
     MapPointPtr m_point = pair.second;
-    if(m_point->conv <= cov_threshold) {
-      // points.push_back(m_point);
-      local_map_->addPoint(m_point);
-    }
+    map->addPoint(m_point);
   }
-//  std::random_shuffle(points.begin(), points.end());
-//  local_map_->clear();
-//  for(int i = 0; i < 2000 && i < points.size(); i++) {
-//    local_map_->addPoint(points[i]);
-//  }
 }
 
 }

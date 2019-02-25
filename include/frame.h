@@ -24,7 +24,7 @@ public:
   void setPose(const SE3 T_c_w);
   Vector3d toWorldCoord(const Vector2d& pt);
   Vector2d toPixel(const Vector3d& pw);
-  void getKeypointColors(const vector<Vector3d>& pws, vector<float*>& colors);
+  void getKeypointColors(const VecVec3d& pws, vector<float*>& colors);
   bool isInside(int x, int y, int border);
   void selectCandidates();
   uint32_t getId();
