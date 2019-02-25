@@ -44,18 +44,15 @@ std::shared_ptr<Frame> Odometry::addFrame(string l_img, string r_img) {
       cout << "Update depth time consumed: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << endl;
     }
 
-    // local BA
-    //optimizeWindow();
-
     if(isNewKeyFrame(frame)) {
       cout << "New keyframe: " << frame->getId() << endl;
       if(next_keyframe) {
         key_frames.push_back(next_keyframe);
-        auto begin = std::chrono::steady_clock::now();
-        optimizeWindow();
-        auto end = std::chrono::steady_clock::now();
-        cout << "Local BA time consumed: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << endl;
         activateMapPoints(next_keyframe);
+        // auto begin = std::chrono::steady_clock::now();
+        // optimizeWindow();
+        // auto end = std::chrono::steady_clock::now();
+        // cout << "Local BA time consumed: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << endl;
       }
       // update next_keyframe
       frame->is_keyframe = true;
@@ -81,9 +78,7 @@ bool Odometry::isNewKeyFrame(FramePtr frame) {
 
 void Odometry::trackNewFrame(FramePtr frame) {
   vector<MapPointPtr> mpts;
-  VecVec2d candidates;
   FramePtr last_frame = all_frames.back();
-  map->projectToFrame(candidates, mpts, last_frame);
 
   VecVec2d px_ref;
   vector<double> depth_ref;
@@ -91,18 +86,7 @@ void Odometry::trackNewFrame(FramePtr frame) {
   // FIXME: assume constant motion is not working
   // T21 = last_delta_;
   // generate pixels and depth in reference frame
-  std::random_shuffle(candidates.begin(), candidates.end());
-  int max_num = 2000;
-  int count = 0;
-  for (int i = 0; i < candidates.size() && count < max_num; i++) {
-    float depth = last_frame->getDepth(candidates[i]);
-    if(depth <= 0 || std::isnan(depth) || std::isinf(depth)) {
-      continue;
-    }
-    px_ref.push_back(candidates[i]);
-    depth_ref.push_back(depth);
-    count++;
-  }
+  map->projectToFrame(px_ref, depth_ref, mpts, last_frame, 2000);
   auto begin = std::chrono::steady_clock::now();
   cout << "Tracking with " << px_ref.size() << " map points. ";
   DirectPoseEstimationMultiLayer(last_frame->left_img, frame->left_img, px_ref, depth_ref, cam_, T21);
@@ -112,7 +96,7 @@ void Odometry::trackNewFrame(FramePtr frame) {
 }
 
 void Odometry::optimizeWindow() {
-  if(key_frames.size() < 2) {return;}
+  if(key_frames.size() < 3) {return;}
   int ref_i = std::max(int(key_frames.size()-3), 0);
   std::shared_ptr<Frame> ref_frame = key_frames[ref_i];
 
@@ -122,8 +106,9 @@ void Odometry::optimizeWindow() {
 
   vector<MapPointPtr> mpts;
   VecVec2d projections;
+  vector<double> depths;
   VecVec3d points;
-  map->projectToFrame(projections, mpts, ref_frame);
+  map->projectToFrame(projections, depths, mpts, ref_frame, 2000);
   for(auto& mpt:mpts) {
     points.push_back(mpt->pt);
   }
@@ -162,7 +147,7 @@ void Odometry::getProjectedPoints(vector<cv::Point2f>& pts, vector<float>& depth
   }
 
   std::random_shuffle(visiable_points.begin(), visiable_points.end());
-  int max_num = 2000;
+  int max_num = 10000;
   int count = 0;
   for(MapPointPtr mp:points) {
     if(count >= max_num)

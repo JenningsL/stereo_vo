@@ -20,7 +20,8 @@ public:
    * @param m_points : corresponding map points
    * @param ref_frame
    */
-  void projectToFrame(VecVec2d& projections, vector<MapPointPtr>& m_points, std::shared_ptr<Frame> ref_frame);
+  void projectToFrame(VecVec2d& projections, vector<double>& depth, vector<MapPointPtr>& m_points,
+                       std::shared_ptr<Frame> ref_frame, int max_num);
   void getAllPoints(vector<MapPointPtr>& points);
   void getLocalPoints(vector<MapPointPtr>& points);
   void removeInvisibleMapPoints(FramePtr frame);
