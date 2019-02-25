@@ -153,6 +153,19 @@ int main ( int argc, char** argv )
 
     Draw(d_cam, s_cam, poses, points, vo.cam_);
   }
-  cv::waitKey(0);
+
+  VecSE3 poses;
+  VecVec3d points;
+  vector<MapPointPtr> all_points;
+  vo.map->getAllPoints(all_points);
+  for(FramePtr frame:vo.key_frames) {
+    poses.push_back(frame->T_c_w_);
+  }
+  for(auto point:all_points) {
+    points.push_back(point->pt);
+  }
+  while(pangolin::ShouldQuit() == false) {
+    Draw(d_cam, s_cam, poses, points, vo.cam_);
+  }
   return 0;
 }
