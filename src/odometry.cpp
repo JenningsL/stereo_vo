@@ -12,10 +12,8 @@
 
 namespace stereo_vo {
 
-Odometry::Odometry() : state_(INIT) {
+Odometry::Odometry(CameraPtr cam) : state_(INIT), cam_(cam) {
   map = std::shared_ptr<Map>(new Map());
-  cam_ = std::shared_ptr<Camera>(new Camera(707.0912, 707.0912, 601.8873, 183.1104));
-//  cam_ = std::shared_ptr<Camera>(new Camera(518.0, 519.0, 325.5, 253.5));
 }
 
 std::shared_ptr<Frame> Odometry::addFrame(string l_img, string r_img) {

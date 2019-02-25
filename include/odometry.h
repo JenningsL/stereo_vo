@@ -21,7 +21,7 @@ enum VOState {INIT, OK, LOST};
 class Odometry {
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-  Odometry();
+  Odometry(CameraPtr cam);
   std::shared_ptr<Frame> addFrame(string l_img, string r_img);
   void getProjectedPoints(vector<cv::Point2f>& pts, vector<float>& depth);
   std::shared_ptr<Map> map;

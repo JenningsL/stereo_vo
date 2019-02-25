@@ -8,14 +8,14 @@
 #include "common.h"
 namespace stereo_vo {
 
-// Pinhole RGBD camera model
+// Pinhole stereo camera model
 class Camera
 {
 public:
   float   fx_, fy_, cx_, cy_;
-  float baseline = 0.5379;
+  float baseline;
 
-  Camera(float fx, float fy, float cx, float cy) : fx_ ( fx ), fy_ ( fy ), cx_ ( cx ), cy_ ( cy ) {};
+  Camera(float fx, float fy, float cx, float cy, float bs) : fx_ ( fx ), fy_ ( fy ), cx_ ( cx ), cy_ ( cy ), baseline(bs) {};
 
   // coordinate transform: world, camera, pixel
   Vector3d world2camera( const Vector3d& p_w, const SE3& T_c_w );

@@ -2,8 +2,8 @@ cmake_minimum_required( VERSION 2.8 )
 project ( stereo_vo )
 
 set( CMAKE_CXX_COMPILER "g++" )
-set( CMAKE_BUILD_TYPE "Release" )
-#set(CMAKE_BUILD_TYPE Debug)
+#set( CMAKE_BUILD_TYPE "Release" )
+set(CMAKE_BUILD_TYPE Debug)
 set( CMAKE_CXX_FLAGS "-std=c++11 -O3" )
 #set( CMAKE_CXX_FLAGS "-std=c++11" )
 
