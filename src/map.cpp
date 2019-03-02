@@ -6,10 +6,8 @@
 namespace stereo_vo {
 
 uint32_t Map::addPoint(MapPointPtr map_point) {
-  if(map_points.find(map_point->id)==map_points.end())
-    map_points.insert(std::make_pair(map_point->id, map_point));
-  if(local_points.find(map_point->id)==local_points.end())
-    local_points.insert(std::make_pair(map_point->id, map_point));
+  map_points.insert({map_point->id, map_point});
+  local_points.insert({map_point->id, map_point});
   return map_point->id;
 }
 
@@ -30,7 +28,7 @@ void Map::projectToFrame(VecVec2d& projections, vector<double>& depth, vector<Ma
     MapPointPtr point = pair.second;
     Vector2d uv = ref_frame->toPixel(point->pt);
     Vector3d p_cam;
-    if(ref_frame->isInside(uv[0], uv[1], 2)) {
+    if(ref_frame->isInside(uv[0], uv[1], 5)) {
       all_proj.push_back(uv);
       all_mp.push_back(point);
       p_cam = ref_frame->T_c_w_.rotation_matrix() * point->pt + ref_frame->T_c_w_.translation();
@@ -76,22 +74,37 @@ void Map::removeInvisibleMapPoints(FramePtr frame) {
 
 void Map::removeOutlier(FramePtr ref, FramePtr cur) {
   vector<MapPointPtr> mpts;
-  VecVec2d projections;
+  VecVec2d p1s;
   VecVec3d points;
   vector<double> depths;
   vector<float *> colors;
-  projectToFrame(projections, depths, mpts, ref);
-  for(auto& mpt:mpts) {
-    points.push_back(mpt->pt);
+  projectToFrame(p1s, depths, mpts, ref);
+//  for(auto& mpt:mpts) {
+//    points.push_back(mpt->pt);
+//  }
+//  ref->getKeypointColors(points, colors);
+//  vector<MapPointPtr> outliners = cur->getOutlier(mpts, colors);
+//  cout << "outliners: " << outliners.size() << endl;
+//  for(auto p:outliners) {
+//    map_points.erase(p->id);
+//    local_points.erase(p->id);
+//  }
+//  for (auto &c: colors) delete[] c;
+  Vector2d p2;
+  double ncc;
+  int outlier_num = 0;
+  for(int i = 0; i < mpts.size(); i++) {
+    p2 = cur->toPixel(mpts[i]->pt);
+    if(!cur->isInside(p2[0], p2[1], 3))
+      continue;
+    ncc = depth_filter::NCC(ref->left_img, cur->left_img, p1s[i], p2);
+    if(ncc < 0.5) {
+      map_points.erase(mpts[i]->id);
+      local_points.erase(mpts[i]->id);
+      outlier_num++;
+    }
   }
-  ref->getKeypointColors(points, colors);
-  vector<MapPointPtr> outliners = cur->getOutlier(mpts, colors);
-  cout << "outliners: " << outliners.size() << endl;
-  for(auto p:outliners) {
-    map_points.erase(p->id);
-    local_points.erase(p->id);
-  }
-  for (auto &c: colors) delete[] c;
+  cout << "outliners: " << outlier_num << endl;
 }
 
 }

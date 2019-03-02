@@ -1,5 +1,6 @@
 #include "frame.h"
 #include <opencv2/highgui/highgui.hpp>
+#include "depth_filter.h"
 
 namespace stereo_vo {
 using namespace cv;
@@ -91,12 +92,6 @@ void Frame::selectCandidates() {
   int nPoints = 4000;
   int border = 50;
 
-  /*
-  vector<cv::KeyPoint> keypoints;
-  cv::Ptr<cv::FastFeatureDetector> detector = cv::FastFeatureDetector::create();
-  detector->detect(left_img, keypoints);
-   */
-
   Mat grad;
   int scale = 1;
   int delta = 0;
@@ -130,7 +125,7 @@ void Frame::selectCandidates() {
   count = 0;
   for (int x = 0; x < left_img.cols; x++) {
     for(int y = 0; y < left_img.rows; y++) {
-      if(grad_norm.at<short>(y, x) < 0.2)
+      if(grad_norm.at<short>(y, x) < 0.05)
         continue;
       // don't pick pixels close to boarder
       if(!isInside(x, y, border))
@@ -210,6 +205,7 @@ void Frame::updateCandidates(FramePtr frame) {
       candidates.erase(ids[i]);
       continue;
     }
+    candidates[ids[i]]->sucess_times++;
     success_match++;
     total_conv += depth_cov[i];
     candidates[ids[i]]->pt[2] = depth[i];

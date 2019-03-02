@@ -3,7 +3,7 @@ add_library( stereo_vo SHARED
     odometry.cpp
     camera.cpp
         map.cpp
-    g2o_types.cpp
+        coarse_track_g2o.cpp
     window_ba.cpp
     direct_pose_estimate.cpp
     map_point.cpp

@@ -81,8 +81,8 @@ public:
     float u = p_cam[0] * fx / p_cam[2] + cx;
     float v = p_cam[1] * fy / p_cam[2] + cy;
     // check u,v is in the image
-    if(u-3<0 || (u+2)>=targetImg.cols
-       || v-3<0 || (v+2)>=targetImg.rows) {
+    if(u-3<0 || (u+3)>=targetImg.cols
+       || v-3<0 || (v+3)>=targetImg.rows) {
       _error = Vector16d::Zero();
       setLevel(1);
     } else {

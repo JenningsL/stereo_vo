@@ -29,13 +29,12 @@ public:
   vector<std::shared_ptr<Frame>> key_frames;
   std::shared_ptr<Camera> cam_;
 private:
-  void activateMapPoints(FramePtr frame);
+  void activateMapPoints(FramePtr frame, bool is_first);
   bool isNewKeyFrame(FramePtr frame);
   void trackNewFrame(FramePtr frame);
   void optimizeWindow();
   VOState state_;
   std::shared_ptr<Frame> next_keyframe;
-  vector<std::shared_ptr<Frame>> active_frames_;
   SE3 last_delta_; // motion from k-2 to k-1
 };
 

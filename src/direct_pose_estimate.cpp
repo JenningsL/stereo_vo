@@ -50,7 +50,7 @@ void DirectPoseEstimationSingleLayer(
       if(u-half_patch_size < 1
          || u+half_patch_size >= img2.cols-1
          || v-half_patch_size < 1
-         || v+half_patch_size >= img2.rows - 1) {
+         || v+half_patch_size >= img2.rows-1) {
         continue;
       }
       nGood++;
@@ -106,7 +106,7 @@ void DirectPoseEstimationSingleLayer(
     lastCost = cost;
     // cout << "cost = " << cost << ", good = " << nGood << endl;
   }
-  // cout << "good projection: " << nGood << endl;
+  cout << "good projection: " << float(nGood) / px_ref.size()<< endl;
   // cout << "T21 = \n" << T21.matrix() << endl;
 
   // in order to help you debug, we plot the projected pixels here
@@ -138,8 +138,10 @@ void DirectPoseEstimationMultiLayer(
 ) {
 
   // parameters
-  int pyramids = 4;
-  double scales[] = {1.0, 0.5, 0.25, 0.125};
+   int pyramids = 4;
+   double scales[] = {1.0, 0.5, 0.25, 0.125};
+//  int pyramids = 2;
+//  double scales[] = {1.0, 0.5};
 
   // create pyramids
   vector<cv::Mat> pyr1, pyr2; // image pyramids

@@ -21,9 +21,11 @@ bool epipolarSearch(
 
   Vector2d px_mean_curr = cam->camera2pixel(T_C_R * P_ref); // 按深度均值投影的像素
   double d_min = depth_mu - 3 * depth_cov, d_max = depth_mu + 3 * depth_cov;
-  if (d_min < 0.1) d_min = 0.1;
+  if (d_min < 0.01) d_min = 0.01;
   Vector2d px_min_curr = cam->camera2pixel(T_C_R * (f_ref * d_min));  // 按最小深度投影的像素
   Vector2d px_max_curr = cam->camera2pixel(T_C_R * (f_ref * d_max));  // 按最大深度投影的像素
+  //cout << depth_mu << "," << d_min << ", " << d_max << endl;
+  //cout << px_min_curr << ", " << px_max_curr << endl;
 
   Vector2d epipolar_line = px_max_curr - px_min_curr;  // 极线（线段形式）
   Vector2d epipolar_direction = epipolar_line;    // 极线方向
@@ -161,14 +163,16 @@ bool updateDepthFilter(
   Vector3d d_esti = (xm + xn) / 2.0;  // 三角化算得的深度向量
   double depth_estimation = d_esti.norm();   // 深度值
 
-  // 计算不确定性（以一个像素为误差）
+  // 计算不确定性
   Vector3d p = f_ref * depth_estimation;
   Vector3d a = p - t;
   double t_norm = t.norm();
   double a_norm = a.norm();
   double alpha = acos(f_ref.dot(t) / t_norm);
   double beta = acos(-a.dot(t) / (a_norm * t_norm));
-  double beta_prime = beta + atan(1 / cam->fx_);
+  // （以一个像素为误差）
+  float pixel_error = 2;
+  double beta_prime = beta + atan(pixel_error / cam->fx_);
   double gamma = M_PI - alpha - beta_prime;
   double p_prime = t_norm * sin(beta_prime) / sin(gamma);
   double d_cov = p_prime - depth_estimation;
@@ -181,13 +185,14 @@ bool updateDepthFilter(
   double mu_fuse = (d_cov2 * mu + sigma2 * depth_estimation) / (sigma2 + d_cov2);
   double sigma_fuse2 = (sigma2 * d_cov2) / (sigma2 + d_cov2);
 
+  //cout << "mu: " <<  mu << ", mu_estimate: "<< depth_estimation << ", mu_fuse: " << mu_fuse
+  //     <<  ", cov: " << sigma2 << ", cov_estimate: " << d_cov2 << endl;
+
   if(std::fabs((depth_estimation - mu)/mu) > 0.2)
     return false;
 
   depth[index] = mu_fuse;
   depth_cov[index] = sigma_fuse2;
-
-  // cout << "mu: " <<  mu << ", mu_estimate: "<< depth_estimation << "cov: " << sigma_fuse2 << endl;
 
   return true;
 }

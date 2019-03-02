@@ -32,7 +32,7 @@ void Draw(pangolin::View &d_cam,pangolin::OpenGlRenderState& s_cam, const VecSE3
   glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
   // draw poses
-  float sz = 0.01;
+  float sz = 0.005; // camera size
   int width = 1226/8, height = 370/8;
   for (auto &Tcw: poses) {
     glPushMatrix();
@@ -119,7 +119,8 @@ int main ( int argc, char** argv )
   FramePtr frame;
   for(int i = img_start; i < img_end; i++) {
     char buffer [10];
-    sprintf(buffer, "%06d.png", i);
+    // sprintf(buffer, "%06d.png", i);
+    sprintf(buffer, "Image_%05d.png", i);
     string fname(buffer);
     frame = vo.addFrame(data_dir+"/image_2/"+fname, data_dir+"/image_3/"+fname);
     // draw

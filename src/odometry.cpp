@@ -3,12 +3,14 @@
 //
 
 #include "odometry.h"
-#include "g2o_types.h"
+#include "coarse_track_g2o.h"
 #include <opencv2/highgui/highgui.hpp>
 #include <cmath>
 #include <iterator>
 #include <algorithm>
 #include <random>
+#include "boost/range/irange.hpp"
+#include "boost/range/algorithm_ext/push_back.hpp"
 
 namespace stereo_vo {
 
@@ -25,39 +27,38 @@ std::shared_ptr<Frame> Odometry::addFrame(string l_img, string r_img) {
   std::shared_ptr<Frame> frame = Frame::CreateFrame(l_gray, r_gray, cam_);
   if(state_ == INIT) {
     frame->is_keyframe = true;
-    key_frames.push_back(frame);
     frame->selectCandidates();
-    activateMapPoints(frame);
-    active_frames_.push_back(frame);
+    activateMapPoints(frame, true);
+    key_frames.push_back(frame);
+    next_keyframe = frame;
     state_ = OK;
   } else if(state_ == OK) {
     // tracking using lastest keyframe
     trackNewFrame(frame);
-    frame->selectCandidates();
-    // FIXME: update depth is slow
-    if(next_keyframe && false) {
-      auto begin = std::chrono::steady_clock::now();
-      next_keyframe->updateCandidates(frame);
-      auto end = std::chrono::steady_clock::now();
-      cout << "Update depth time consumed: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << endl;
-    }
-
+    // FIXME: update depth is not working
+    /*
+    auto begin = std::chrono::steady_clock::now();
+    key_frames.back()->updateCandidates(frame);
+    auto end = std::chrono::steady_clock::now();
+    cout << "Update depth time consumed: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << endl;
+    */
     if(isNewKeyFrame(frame)) {
       cout << "New keyframe: " << frame->getId() << endl;
-      if(next_keyframe) {
-        key_frames.push_back(next_keyframe);
-        activateMapPoints(next_keyframe);
-        // auto begin = std::chrono::steady_clock::now();
-        // optimizeWindow();
-        // auto end = std::chrono::steady_clock::now();
-        // cout << "Local BA time consumed: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << endl;
-      }
-      // update next_keyframe
+      frame->selectCandidates();
       frame->is_keyframe = true;
-      next_keyframe = frame;
+      key_frames.push_back(frame);
+//      auto begin = std::chrono::steady_clock::now();
+//      optimizeWindow();
+//      auto end = std::chrono::steady_clock::now();
+//      cout << "Local BA time consumed: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << endl;
+      activateMapPoints(frame, false);
+      // update next_keyframe
+//      frame->is_keyframe = true;
+//      next_keyframe = frame;
     }
     // update velocity
     last_delta_ = frame->T_c_w_ * all_frames.back()->T_c_w_.inverse();
+
 
     map->removeInvisibleMapPoints(frame);
     map->removeOutlier(key_frames.back(), frame);
@@ -67,20 +68,40 @@ std::shared_ptr<Frame> Odometry::addFrame(string l_img, string r_img) {
 }
 
 bool Odometry::isNewKeyFrame(FramePtr frame) {
-  // TODO: determined based on mean square optical flow
-  SE3 delta = frame->T_c_w_ * key_frames.back()->T_c_w_.inverse();
-  double t = delta.translation().norm();
-  cout << "t_norm: " << t << endl;
-  return t > 0.03;
+  // determined based on mean square optical flow
+  FramePtr last_keyframe = key_frames.back();
+  VecVec2d px_1;
+  vector<double> depth;
+  vector<MapPointPtr> mpts;
+  map->projectToFrame(px_1, depth, mpts, last_keyframe, 2000);
+  Vector2d p2;
+  Vector2d displacement;
+  float mean_square_opt_flow = 0;
+  int num = 0;
+  for(int i = 0; i < mpts.size(); i++) {
+    p2 = frame->toPixel(mpts[i]->pt);
+    if(!frame->isInside(p2[0], p2[1], 0))
+      continue;
+    displacement = p2-px_1[i];
+    mean_square_opt_flow += displacement.norm();
+    num++;
+  }
+  cout << "mean_square_opt_flow: " << mean_square_opt_flow / num << endl;
+  return mean_square_opt_flow / num > 20;
 }
 
 void Odometry::trackNewFrame(FramePtr frame) {
   vector<MapPointPtr> mpts;
   FramePtr last_frame = all_frames.back();
+  //FramePtr last_frame = key_frames.back();
+  //FramePtr last_frame = next_keyframe;
+
+  cout << "Frame gap: " << frame->getId() - last_frame->getId() << endl;
 
   VecVec2d px_ref;
   vector<double> depth_ref;
   Sophus::SE3 T21;
+  cout << "last_delta_: " << last_delta_.matrix() << endl;
   // FIXME: assume constant motion is not working
   // T21 = last_delta_;
   // generate pixels and depth in reference frame
@@ -91,11 +112,13 @@ void Odometry::trackNewFrame(FramePtr frame) {
   frame->setPose(T21*last_frame->T_c_w_);
   auto end = std::chrono::steady_clock::now();
   cout << "Time consumed: " << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count() << endl;
+  cout << "T21: " << T21.matrix() << endl;
 }
 
 void Odometry::optimizeWindow() {
-  if(key_frames.size() < 3) {return;}
-  int ref_i = std::max(int(key_frames.size()-3), 0);
+  const int window_size = 3;
+  if(key_frames.size() < 2) {return;}
+  int ref_i = std::max(int(key_frames.size()-window_size), 0);
   std::shared_ptr<Frame> ref_frame = key_frames[ref_i];
 
   VecSE3 poses;
@@ -113,14 +136,12 @@ void Odometry::optimizeWindow() {
   ref_frame->getKeypointColors(points, colors);
 
   vector<FramePtr> opt_frames;
-  for(int i = key_frames.size()-1; i >= key_frames.size()-3 && i >= 0; i--) {
+  for(int i = key_frames.size()-1; i >= ref_i; i--) {
     auto frame = key_frames[i];
     poses.insert(poses.begin(), frame->T_c_w_);
     images.insert(images.begin(), frame->left_img);
     opt_frames.insert(opt_frames.begin(), frame);
   }
-
-  //if(poses.size() < 3) {return;}
 
   WindowDirectBA window_ba(cam_);
   window_ba.optimize(poses, points, images, colors);
@@ -158,15 +179,61 @@ void Odometry::getProjectedPoints(vector<cv::Point2f>& pts, vector<float>& depth
     count++;
   }
 //  auto it = max_element(std::begin(depth), std::end(depth));
-//  cout << "max depth: " << *it << endl;
+//  cout << "max depth: " << *it << endl;parameter is empty
 }
 
-void Odometry::activateMapPoints(FramePtr frame) {
-  // TODO: select points to add
+void Odometry::activateMapPoints(FramePtr frame, bool is_first) {
+  if(is_first) {
+    for(auto& pair:frame->candidates) {map->addPoint(pair.second);}
+    return;
+  }
+
+  vector<MapPointPtr> mpts;
+  VecVec2d projections;
+  vector<double> depths;
+  map->projectToFrame(projections, depths, mpts, frame, -1);
+
+  cv::Mat exist_points(projections.size(), 2, CV_32F);
+  for(int i = 0; i < projections.size(); i++) {
+    exist_points.at<float>(i,0) = projections[i][0];
+    exist_points.at<float>(i,1) = projections[i][1];
+  }
+  cv::flann::Index Kdtree;
+  Kdtree.build(exist_points,cv::flann::KDTreeIndexParams(1),cvflann::FLANN_DIST_EUCLIDEAN);
+
+  vector<MapPointPtr> candidates;
+  Mat candidate_2d;
   for(auto pair:frame->candidates) {
     MapPointPtr m_point = pair.second;
-    map->addPoint(m_point);
+    // if(pair.second->sucess_times < frame->getId() - key_frames.back()->getId() - 1)
+    //if(pair.second->sucess_times < 1)
+    //  continue;
+    Vector2d uv = frame->toPixel(m_point->pt);
+    candidates.push_back(m_point);
+    Mat row = Mat(1, 2, CV_32F);
+    row.at<float>(0,0) = uv[0];
+    row.at<float>(0,1) = uv[1];
+    candidate_2d.push_back(row);
   }
+
+  Mat matches(candidate_2d.size(), 1, CV_32S);
+  Mat distances(candidate_2d.size(), 1, CV_32F);
+  Kdtree.knnSearch(candidate_2d, matches, distances, 1, cv::flann::SearchParams(-1));
+  // select top-k points that are farthest to the existing points
+  std::vector<int> indices;
+  boost::push_back(indices, boost::irange(0, (int)candidates.size()));
+  std::sort(indices.begin(), indices.end(), [&distances](const int& a, const int& b){return distances.at<float>(a) > distances.at<float>(b);});
+  int count = 0;
+  for(int i = 0; i < candidates.size(); i++) {
+    if(count > 2000)
+      break;
+    if(distances.at<float>(indices[i]) < 9)
+      continue;
+    // cout << "distance: " << sqrt(distances.at<float>(indices[i]));
+    map->addPoint(candidates[indices[i]]);
+    count++;
+  }
+  cout << "Add " << count << " new map points" << endl;
 }
 
 }

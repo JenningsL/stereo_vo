@@ -13,6 +13,7 @@ namespace stereo_vo {
 
 class Map {
 public:
+  Map():map_points(), local_points() {};
   uint32_t addPoint(MapPointPtr map_point);
   /**
    * Project all mature map point to a frame, only those visible in image are kept
